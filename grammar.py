@@ -243,7 +243,7 @@ WhileStmtNT |= (T.WHILE, BExprNT, T.LBRACE, StatementsNT, T.RBRACE,
 ReturnStmtNT |= (T.RETURN, OptAExprNT, lambda _ret, expr: ReturnStmt(value=expr))
 
 OptAExprNT |= (AExprNT, lambda expr: expr)
-OptAExprNT |= (Eps, lambda: "")
+#OptAExprNT |= (Eps, lambda: "")
 
 # FuncCallStmt: IDENT LP OptArgListNT RP
 FuncCallStmtNT |= (T.IDENT, T.LP, OptArgListNT, T.RP,

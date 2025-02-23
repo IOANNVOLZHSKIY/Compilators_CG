@@ -6,26 +6,49 @@ sys.path.append('..')
 
 from grammar import *
 
-# ============================================================================
-# 3. Функция запуска парсера и вывод AST
-# ============================================================================
-
 def main():
-    # Изменённый метод Program.check, чтобы принимать symbols по умолчанию
     def program_check(self, symbols=None):
         if symbols is None:
             symbols = {}
         for decl in self.top_levels:
             decl.check(symbols)
 
-    # Подменяем метод check для Program, если нужно:
     Program.check = program_check
 
     samples = [
         """
-        type MyDyn dynvar {
-        ptr *D
-        count int
+        func gcd(a int, b int) int {
+        var rem int
+        while b != 0 {
+            rem = a % b
+            a = b
+            b = rem
+        }
+        return a
+    }
+    """,
+    """
+        func gcd(a int, b str) int {
+        var rem int
+        while b != 0 {
+             rem = a % b
+               a = b
+              b = rem
+          }
+         return a
+     }
+    """,
+    """
+            func main() int {
+               var x int
+                  x = 10
+                  return x
+            }
+    """,
+    """
+        type MyStruct {
+              x int
+              y [10]char
         }
     """
     ]
@@ -35,7 +58,6 @@ def main():
         print("Исходный код:")
         print(sample)
         try:
-            # Токенизация
             domains = []
             for obj in T.__dict__.values():
                 if isinstance(obj, (Terminal, SpecTerminal)):
@@ -53,7 +75,6 @@ def main():
             for token in tokens:
                 print(token.pos, ":", token)
 
-            # Парсинг
             p = pe.Parser(ProgramStart)
             p.add_skipped_domain(r'\s+')
             p.add_skipped_domain(r'\{.*?\}')
