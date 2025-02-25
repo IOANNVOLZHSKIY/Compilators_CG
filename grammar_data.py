@@ -67,7 +67,6 @@ class TypeDecl(Node):
         self.spec.check(symbols)
 
     def generate(self) -> str:
-        # Типовые декларации не порождают исполняемый код – выводим как комментарий
         return f";; type {self.name} defined as {self.spec.generate()}"
 
 @dataclass
@@ -95,7 +94,6 @@ class StructField(Node):
         self.fieldType.check(symbols)
 
     def generate(self) -> str:
-        # Поле представляется как (FieldName FieldType)
         return f"({self.name} {self.fieldType.generate()})"
 
 @dataclass
@@ -128,7 +126,6 @@ class ClassMember(Node):
             self.methodDecl.check(symbols)
 
     def generate(self) -> str:
-        # Если это метод – делегируем его генерацию, иначе поле
         if self.methodDecl:
             return self.methodDecl.generate()
         elif self.memberType:
@@ -213,7 +210,6 @@ class Param(Node):
         self.paramType.check(symbols)
 
     def generate(self) -> str:
-        # Параметр – просто имя; тип уже указан в декларации функции (если необходимо)
         return self.name
 
 @dataclass
@@ -251,7 +247,6 @@ class FunctionDecl(Node):
         params_expr = " ".join(p.generate() for p in self.params)
         locals_expr = " ".join(loc.generate() for loc in self.locals) if self.locals else ""
         body_expr = "\n  ".join(stmt.generate() for stmt in self.body)
-        # Если есть локальные переменные, включаем их секцию
         var_part = f"(var {locals_expr})" if locals_expr else ""
         return f"(function {self.name} ({params_expr})\n  {var_part}\n  {body_expr}\n)"
 
@@ -336,7 +331,6 @@ class Assignment(Node):
     def generate(self) -> str:
         left_expr = self.left.generate()
         right_expr = self.right.generate()
-        # В НУИЯП присваивание выглядит как (<left> "=" <right>)
         return f"({left_expr} \"=\" {right_expr})"
 
 @dataclass
@@ -614,7 +608,6 @@ class AExprAddress(Node):
         self.sub.check(symbols)
 
     def generate(self) -> str:
-        # В НУИЯП разыменование обозначается как (L <expr>)
         return f"(L {self.sub.generate()})"
 
 @dataclass
@@ -748,7 +741,6 @@ class AExprPostfix(Node):
                 if op_name == "index":
                     result = f"({result} [ {operand.generate()} ])"
                 elif op_name == "field":
-                    # Здесь operand – имя поля (строка)
                     result = f"({result} . {operand})"
         return result
 
