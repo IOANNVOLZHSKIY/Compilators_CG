@@ -27,30 +27,30 @@ def main():
         return a
     }
     """,
-    """
-        func gcd(a int, b str) int {
-        var rem int
-        while b != 0 {
-             rem = a % b
-               a = b
-              b = rem
-          }
-         return a
-     }
-    """,
-    """
-            func main() int {
-               var x int
-                  x = 10
-                  return x
+        """
+            func gcd(a int, b str) int {
+            var rem int
+            while b != 0 {
+                 rem = a % b
+                   a = b
+                  b = rem
+              }
+             return a
+         }
+        """,
+        """
+                func main() int {
+                   var x int
+                      x = 10
+                      return x
+                }
+        """,
+        """
+            type MyStruct {
+                  x int
+                  y [10]char
             }
-    """,
-    """
-        type MyStruct {
-              x int
-              y [10]char
-        }
-    """
+        """
     ]
 
     for idx, sample in enumerate(samples, 1):
@@ -85,6 +85,9 @@ def main():
 
             ast.check()
             print("Semantic analysis passed successfully.")
+
+            code = ast.generate()
+            print("НУИЯП! Во имя РАЯП!:\n", code)
         except Exception as e:
             print("Error encountered:")
             traceback.print_exc()

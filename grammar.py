@@ -156,7 +156,7 @@ TypeNT |= (T.LSQUARE, T.NUMBER, T.RSQUARE, TypeNT,
 TypeNT |= (T.SYM, TypeNT, lambda typ: ArrayType(size=None, element=typ))
 TypeNT |= (T.FUNC, T.LP, OptParamListNT, T.RP, TypeOpt,
            lambda func, params, retT: FuncType(params=params, returnType=retT))
-TypeNT |= (T.IDENT, lambda idTok: CustomType(name=idTok))
+TypeNT |= (T.IDENT, lambda idTok: IntType() if idTok == "int" else CustomType(name=idTok))
 
 # --- TypeOpt --- (необязательный тип, например, возвращаемый тип функции)
 TypeOpt |= (TypeNT, lambda t: t)
