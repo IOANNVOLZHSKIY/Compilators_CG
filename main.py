@@ -8,13 +8,11 @@ from grammar import *  # импортирует AST, парсер и т.д.
 import parser_edsl_new as pe
 
 def main():
-    # Разбор аргументов командной строки
     parser = argparse.ArgumentParser(description="Компиляция исходного файла Go-подобного синтаксиса в AST, семантический анализ и NUYAP представление.")
     parser.add_argument("source", help="Входной файл с исходным кодом (Go-подобный синтаксис)")
     parser.add_argument("-o", "--output", help="Выходной файл, куда записывается результат", default=None)
     args = parser.parse_args()
 
-    # Чтение исходного файла
     try:
         with open(args.source, "r", encoding="utf-8") as f:
             source_code = f.read()
@@ -39,7 +37,6 @@ def main():
     for token in tokens:
         print(token.pos, ":", token)
 
-    # Создание парсера (предполагается, что ProgramStart определён в grammar.py)
     p = pe.Parser(ProgramStart)
     p.add_skipped_domain(r'\s+')
     p.add_skipped_domain(r'\{.*?\}')
@@ -53,23 +50,19 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    # Собираем вывод семантического анализа
     semantic_output = io.StringIO()
     old_stdout = sys.stdout
     try:
         sys.stdout = semantic_output
-        ast.check()  # При проверке ошибки выводятся через print
+        ast.check()
     finally:
         sys.stdout = old_stdout
     semantic_errors = semantic_output.getvalue().strip()
 
-    # Получаем строковое представление AST (например, с помощью pprint)
     ast_tree_str = pformat(ast)
 
-    # Генерируем NUYAP представление
     nuyap_code = ast.generate()
 
-    # Формируем итоговый вывод
     output_text = []
     output_text.append("=== AST Tree ===")
     output_text.append(ast_tree_str)
@@ -79,7 +72,6 @@ def main():
     output_text.append(nuyap_code)
     final_output = "\n".join(output_text)
 
-    # Если указан выходной файл, записываем результат туда
     if args.output:
         try:
             with open(args.output, "w", encoding="utf-8") as out_file:
