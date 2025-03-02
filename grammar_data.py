@@ -31,7 +31,7 @@ class Node(abc.ABC):
 
 class SemanticError(pe.Error):
     def __init__(self, pos, message):
-        self.pos = pos
+        self.atom.name = pos
         self.__message = message
 
     @property
@@ -39,7 +39,7 @@ class SemanticError(pe.Error):
         return self.__message
 
     def __str__(self):
-        return f"Semantic error at {self.pos}: {self.__message}"
+        return f"Semantic error at {self.atom.name}: {self.__message}"
 
 
 class UndefinedError(SemanticError):
@@ -98,7 +98,7 @@ class StructSpec(Node):
         seen = set()
         for field in self.fields:
             if field.name in seen:
-                print(f"Semantic error at {field.pos}: Duplicate field '{field.name}'")
+                print(f"Semantic error at {field.atom.name}: Duplicate field '{field.name}'")
             else:
                 seen.add(field.name)
             field.check(symbols)
@@ -234,7 +234,7 @@ class Param(Node):
 
     def check(self, symbols: dict):
         if self.name in symbols:
-            print(f"Semantic error at {self.pos}: Duplicate parameter '{self.name}'")
+            print(f"Semantic error at {self.atom.name}: Duplicate parameter '{self.name}'")
         else:
             symbols[self.name] = self.paramType
         self.paramType.check(symbols)
@@ -262,7 +262,7 @@ class FunctionDecl(Node):
 
     def check(self, symbols: dict):
         if self.name in symbols:
-            print(f"Semantic error at {self.pos}: Function '{self.name}' already declared")
+            print(f"Semantic error at {self.atom.name}: Function '{self.name}' already declared")
         else:
             symbols[self.name] = self
         func_symbols = {}
@@ -299,14 +299,14 @@ class GlobalVarDecl(Node):
 
     def check(self, symbols: dict):
         if self.name in symbols:
-            print(f"Semantic error at {self.pos}: Global variable '{self.name}' already declared")
+            print(f"Semantic error at {self.atom.name}: Global variable '{self.name}' already declared")
         else:
             self.varType.check(symbols)
             symbols[self.name] = self.varType
         if self.init:
             self.init.check(symbols)
             if hasattr(self.init, 'type') and self.init.type != self.varType:
-                print(f"Semantic error at {self.init.pos}: Type mismatch in initialization of '{self.name}'")
+                print(f"Semantic error at {self.init.atom.name}: Type mismatch in initialization of '{self.name}'")
 
     def generate(self) -> str:
         if self.init:
@@ -331,14 +331,14 @@ class LocalVarDecl(Node):
 
     def check(self, symbols: dict):
         if self.name in symbols:
-            print(f"Semantic error at {self.pos}: Local variable '{self.name}' already declared")
+            print(f"Semantic error at {self.atom.name}: Local variable '{self.name}' already declared")
         else:
             self.varType.check(symbols)
             symbols[self.name] = self.varType
         if self.init:
             self.init.check(symbols)
             if hasattr(self.init, 'type') and self.init.type != self.varType:
-                print(f"Semantic error at {self.init.pos}: Type mismatch in initialization of '{self.name}'")
+                print(f"Semantic error at {self.init.atom.name}: Type mismatch in initialization of '{self.name}'")
 
     def generate(self) -> str:
         if self.init:
@@ -365,18 +365,18 @@ class Assignment(Node):
         self.right.check(symbols)
         # Проверяем, что левая часть является левым значением
         if not self.left.is_lvalue():
-            print(f"Semantic error at {self.pos}: Left-hand side of assignment must be an lvalue")
+            print(f"Semantic error at {self.atom.name}: Left-hand side of assignment must be an lvalue")
         # Если правая часть – левое значение, необходимо разыменовать её
         if self.right.is_lvalue():
             # Автоматически оборачиваем правую часть в операцию разыменования
-            self.right = AExprAddress(sub=self.right, pos=self.right.pos)
+            self.right = AExprAddress(sub=self.right, pos=self.right.atom.name)
             self.right.check(symbols)
         # Ограничение: присваиваемое значение должно быть "одним словом"
         if isinstance(getattr(self.right, 'type', None), (ArrayType, StructSpec)):
-            print(f"Semantic error at {self.right.pos}: Assigned value must be a single word")
+            print(f"Semantic error at {self.right.atom.name}: Assigned value must be a single word")
         # Проверяем типовую совместимость
         if hasattr(self.left, 'type') and hasattr(self.right, 'type') and self.left.type != self.right.type:
-            print(f"Semantic error at {self.pos}: Cannot assign {self.right.type} to {self.left.type}")
+            print(f"Semantic error at {self.atom.name}: Cannot assign {self.right.type} to {self.left.type}")
 
     def generate(self) -> str:
         left_expr = self.left.generate()
@@ -401,7 +401,7 @@ class IfStmt(Node):
     def check(self, symbols: dict):
         self.cond.check(symbols)
         if not isinstance(getattr(self.cond, 'type', None), BoolType):
-            print(f"Semantic error at {self.cond.pos}: Condition must be boolean")
+            print(f"Semantic error at {self.cond.atom.name}: Condition must be boolean")
         for stmt in self.thenBody:
             stmt.check(symbols)
         for else_if in self.elseIfs:
@@ -438,7 +438,7 @@ class ElseIf(Node):
     def check(self, symbols: dict):
         self.cond.check(symbols)
         if not isinstance(getattr(self.cond, 'type', None), BoolType):
-            print(f"Semantic error at {self.cond.pos}: Condition must be boolean")
+            print(f"Semantic error at {self.cond.atom.name}: Condition must be boolean")
         for stmt in self.body:
             stmt.check(symbols)
 
@@ -463,7 +463,7 @@ class WhileStmt(Node):
     def check(self, symbols: dict):
         self.cond.check(symbols)
         if not isinstance(getattr(self.cond, 'type', None), BoolType):
-            print(f"Semantic error at {self.cond.pos}: Condition must be boolean")
+            print(f"Semantic error at {self.cond.atom.name}: Condition must be boolean")
         for stmt in self.body:
             stmt.check(symbols)
 
@@ -496,9 +496,9 @@ class ReturnStmt(Node):
         if self.value:
             self.value.check(symbols)
             if hasattr(self.value, 'type') and self.value.type != expected:
-                print(f"Semantic error at {self.value.pos}: Expected {expected}, got {self.value.type}")
+                print(f"Semantic error at {self.value.atom.name}: Expected {expected}, got {self.value.type}")
         elif expected is not None:
-            print(f"Semantic error at {self.pos}: Non-void function must return a value")
+            print(f"Semantic error at {self.atom.name}: Non-void function must return a value")
 
     def generate(self) -> str:
         if self.value:
@@ -522,20 +522,20 @@ class FuncCall(Node):
 
     def check(self, symbols: dict):
         if self.func not in symbols:
-            print(f"Semantic error at {self.pos}: Undefined function '{self.func}'")
+            print(f"Semantic error at {self.atom.name}: Undefined function '{self.func}'")
             return
         func_decl = symbols[self.func]
         if not isinstance(func_decl, FunctionDecl):
-            print(f"Semantic error at {self.pos}: '{self.func}' is not a function")
+            print(f"Semantic error at {self.atom.name}: '{self.func}' is not a function")
             return
         for arg in self.args:
             arg.check(symbols)
             # Разрешённые типы аргументов: int, указатели и пользовательские (custom) типы
             if not (isinstance(arg.type, IntType) or isinstance(arg.type, PointerType) or isinstance(arg.type, CustomType)):
-                print(f"Semantic error at {arg.pos}: Invalid argument type {arg.type} in function call '{self.func}'")
+                print(f"Semantic error at {arg.atom.name}: Invalid argument type {arg.type} in function call '{self.func}'")
         for arg, param in zip(self.args, func_decl.params):
             if hasattr(arg, 'type') and arg.type != param.paramType:
-                print(f"Semantic error at {arg.pos}: Argument type mismatch in call to '{self.func}'")
+                print(f"Semantic error at {arg.atom.name}: Argument type mismatch in call to '{self.func}'")
         self.type = func_decl.returnType
 
     def generate(self) -> str:
@@ -658,9 +658,9 @@ class Comparison(Node):
         self.left.check(symbols)
         self.right.check(symbols)
         if hasattr(self.left, 'type') and hasattr(self.right, 'type') and self.left.type != self.right.type:
-            print(f"Semantic error at {self.left.pos}: Operands of '{self.op}' must have the same type")
+            print(f"Semantic error at {self.left.atom.name}: Operands of '{self.op}' must have the same type")
         if not isinstance(getattr(self.left, 'type', None), (IntType, CharType)):
-            print(f"Semantic error at {self.left.pos}: Comparison '{self.op}' is not allowed for type {self.left.type}")
+            print(f"Semantic error at {self.left.atom.name}: Comparison '{self.op}' is not allowed for type {self.left.type}")
         self.type = BoolType()
 
     def generate(self) -> str:
@@ -760,7 +760,7 @@ class AExprVar(Node):
 
     def check(self, symbols: dict):
         if self.name not in symbols:
-            print(f"Semantic error at {self.pos}: Undefined variable '{self.name}'")
+            print(f"Semantic error at {self.atom.name}: Undefined variable '{self.name}'")
         else:
             self.type = symbols[self.name]
     def generate(self) -> str:
@@ -792,12 +792,12 @@ class AExprPostfix(Node):
             if op_name == "index":
                 operand.check(symbols)
                 if not isinstance(current_type, ArrayType):
-                    print(f"Semantic error at {self.atom.pos}: Indexing is allowed only for arrays, got {current_type}")
+                    print(f"Semantic error at {self.atom.atom.name}: Indexing is allowed only for arrays, got {current_type}")
                 else:
                     current_type = current_type.element
             elif op_name == "field":
                 if not isinstance(current_type, StructSpec):
-                    print(f"Semantic error at {self.atom.pos}: Field access allowed only for structs, got {current_type}")
+                    print(f"Semantic error at {self.atom.atom.name}: Field access allowed only for structs, got {current_type}")
                 else:
                     field_found = False
                     for field in current_type.fields:
@@ -806,7 +806,7 @@ class AExprPostfix(Node):
                             field_found = True
                             break
                     if not field_found:
-                        print(f"Semantic error at {self.atom.pos}: Field '{operand}' not found in {current_type}")
+                        print(f"Semantic error at {self.atom.atom.name}: Field '{operand}' not found in {current_type}")
             else:
                 print(f"Semantic error: Unknown postfix operator: {op_name}")
         self.type = current_type
@@ -850,7 +850,7 @@ class AExprAddChain(Node):
         for op, operand in self.tail:
             operand.check(symbols)
             if not (isinstance(current_type, IntType) and isinstance(operand.type, IntType)):
-                print(f"Semantic error at {self.left.pos}: Operation '{op}' requires int, got {current_type} and {operand.type}")
+                print(f"Semantic error at {self.left.atom.name}: Operation '{op}' requires int, got {current_type} and {operand.type}")
             current_type = IntType()
         self.type = current_type
 
@@ -879,7 +879,7 @@ class AExprMulChain(Node):
         for op, operand in self.tail:
             operand.check(symbols)
             if not (isinstance(current_type, IntType) and isinstance(operand.type, IntType)):
-                print(f"Semantic error at {self.left.pos}: Operation '{op}' requires int, got {current_type} and {operand.type}")
+                print(f"Semantic error at {self.left.atom.name}: Operation '{op}' requires int, got {current_type} and {operand.type}")
             current_type = IntType()
         self.type = current_type
 
@@ -897,7 +897,7 @@ class AExprAddressOf(Node):
     def check(self, symbols: dict):
         self.sub.check(symbols)
         if not self.sub.is_lvalue():
-            print(f"Semantic error at {self.pos}: Cannot take address of a non-lvalue")
+            print(f"Semantic error at {self.atom.name}: Cannot take address of a non-lvalue")
         # Типом будет указатель на тип операнда
         self.type = PointerType(self.sub.type)
 
@@ -1025,11 +1025,11 @@ class FieldAccess(Node):
     def check(self, symbols: dict):
         self.obj.check(symbols)
         if not isinstance(self.obj.type, StructSpec):
-            print(f"Semantic error at {self.obj.pos}: Expected struct type, got {self.obj.type}")
+            print(f"Semantic error at {self.obj.atom.name}: Expected struct type, got {self.obj.type}")
             return
         struct_type = self.obj.type
         for field in struct_type.fields:
             if field.name == self.fieldName:
                 self.type = field.fieldType
                 return
-        print(f"Semantic error at {self.pos}: Struct '{struct_type}' has no field '{self.fieldName}'")
+        print(f"Semantic error at {self.atom.name}: Struct '{struct_type}' has no field '{self.fieldName}'")
