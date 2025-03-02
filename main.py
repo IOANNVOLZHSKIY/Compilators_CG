@@ -2,6 +2,7 @@
 import abc
 import sys
 import traceback
+import io
 sys.path.append('..')
 
 from grammar import *
@@ -83,8 +84,18 @@ def main():
             from pprint import pprint
             pprint(ast)
 
+            # Перенаправляем вывод для захвата семантических ошибок
+            error_capture = io.StringIO()
+            old_stdout = sys.stdout
+            sys.stdout = error_capture
             ast.check()
-            print("Semantic analysis passed successfully.")
+            sys.stdout = old_stdout
+            semantic_errors = error_capture.getvalue().strip()
+            if semantic_errors:
+                print("Semantic Errors:")
+                print(semantic_errors)
+            else:
+                print("Semantic analysis passed successfully.")
 
             code = ast.generate()
             print("НУИЯП! Во имя РАЯП!:\n", code)
