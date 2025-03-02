@@ -17,6 +17,17 @@ class Node(abc.ABC):
     def generate(self) -> str:
         raise NotImplementedError
 
+    def is_lvalue(self) -> bool:
+        return False
+
+    @staticmethod
+    def generate_rval(node: "Node") -> str:
+        if isinstance(node, AExprAddress):
+            return node.generate()
+        if node.is_lvalue():
+            return AExprAddress(sub=node, pos=getattr(node, 'pos', None)).generate()
+        return node.generate()
+
 
 class SemanticError(pe.Error):
     def __init__(self, pos, message):
@@ -61,9 +72,7 @@ class Program(Node):
                 print(e)
 
     def generate(self) -> str:
-        # Последовательность верхнеуровневых объявлений
         return "\n\n".join(decl.generate() for decl in self.top_levels)
-
 
 @dataclass
 class TypeDecl(Node):
@@ -72,7 +81,7 @@ class TypeDecl(Node):
 
     def check(self, symbols: dict):
         if self.name in symbols:
-            print(f"Semantic error at {self.pos}: Type '{self.name}' already declared")
+            print(f"Semantic error at {getattr(self, 'pos', None)}: Type '{self.name}' already declared")
         else:
             symbols[self.name] = self.spec
         self.spec.check(symbols)
@@ -97,7 +106,6 @@ class StructSpec(Node):
     def generate(self) -> str:
         fields_expr = "\n  ".join(field.generate() for field in self.fields)
         return f"(struct {fields_expr})"
-
 
 @dataclass
 class StructField(Node):
@@ -238,16 +246,16 @@ class Param(Node):
 @dataclass
 class FunctionDecl(Node):
     name: str
-    params: List[Param] = field(default_factory=list)
+    params: List["Param"] = field(default_factory=list)
     returnType: Optional[Node] = None
     locals: List[Node] = field(default_factory=list)
     body: List[Node] = field(default_factory=list)
-    pos: Optional[pe.Position] = None  # позиция функции
+    pos: Optional[pe.Position] = None
 
     @pe.ExAction
     def create(attrs, coords, res_coord):
         func_name, params, retType, locals, body = attrs
-        cfunc, _, _, _, cbrace_open, _, cbrace_close = coords  # упрощённо
+        cfunc, _, _, _, cbrace_open, _, cbrace_close = coords
         return FunctionDecl(name=func_name, params=params,
                             returnType=retType, locals=locals, body=body,
                             pos=cfunc.start)
@@ -355,12 +363,24 @@ class Assignment(Node):
     def check(self, symbols: dict):
         self.left.check(symbols)
         self.right.check(symbols)
+        # Проверяем, что левая часть является левым значением
+        if not self.left.is_lvalue():
+            print(f"Semantic error at {self.pos}: Left-hand side of assignment must be an lvalue")
+        # Если правая часть – левое значение, необходимо разыменовать её
+        if self.right.is_lvalue():
+            # Автоматически оборачиваем правую часть в операцию разыменования
+            self.right = AExprAddress(sub=self.right, pos=self.right.pos)
+            self.right.check(symbols)
+        # Ограничение: присваиваемое значение должно быть "одним словом"
+        if isinstance(getattr(self.right, 'type', None), (ArrayType, StructSpec)):
+            print(f"Semantic error at {self.right.pos}: Assigned value must be a single word")
+        # Проверяем типовую совместимость
         if hasattr(self.left, 'type') and hasattr(self.right, 'type') and self.left.type != self.right.type:
             print(f"Semantic error at {self.pos}: Cannot assign {self.right.type} to {self.left.type}")
 
     def generate(self) -> str:
         left_expr = self.left.generate()
-        right_expr = self.right.generate()
+        right_expr = Node.generate_rval(self.right)
         return f"({left_expr} \"=\" {right_expr})"
 
 
@@ -448,9 +468,9 @@ class WhileStmt(Node):
             stmt.check(symbols)
 
     def generate(self) -> str:
-        cond_expr = self.cond.generate()
+        cond_expr = Node.generate_rval(self.cond)
         body_expr = "\n  ".join(stmt.generate() for stmt in self.body)
-        return f"(while ({cond_expr})\n  ({body_expr}))"
+        return f"(while {cond_expr}\n  {body_expr})"
 
 
 @dataclass
@@ -482,7 +502,7 @@ class ReturnStmt(Node):
 
     def generate(self) -> str:
         if self.value:
-            return f"(return {self.value.generate()})"
+            return f"(return {Node.generate_rval(self.value)})"
         else:
             return "(return)"
 
@@ -510,6 +530,9 @@ class FuncCall(Node):
             return
         for arg in self.args:
             arg.check(symbols)
+            # Разрешённые типы аргументов: int, указатели и пользовательские (custom) типы
+            if not (isinstance(arg.type, IntType) or isinstance(arg.type, PointerType) or isinstance(arg.type, CustomType)):
+                print(f"Semantic error at {arg.pos}: Invalid argument type {arg.type} in function call '{self.func}'")
         for arg, param in zip(self.args, func_decl.params):
             if hasattr(arg, 'type') and arg.type != param.paramType:
                 print(f"Semantic error at {arg.pos}: Argument type mismatch in call to '{self.func}'")
@@ -641,7 +664,7 @@ class Comparison(Node):
         self.type = BoolType()
 
     def generate(self) -> str:
-        return f"({self.left.generate()} {self.op} {self.right.generate()})"
+        return f"({Node.generate_rval(self.left)} {self.op} {Node.generate_rval(self.right)})"
 
 
 @dataclass
@@ -651,9 +674,11 @@ class AExprAddress(Node):
 
     def check(self, symbols: dict):
         self.sub.check(symbols)
-
     def generate(self) -> str:
         return f"(L {self.sub.generate()})"
+    def is_lvalue(self) -> bool:
+        # Результат операции разыменования (L ...) является левым значением
+        return True
 
 
 @dataclass
@@ -738,9 +763,10 @@ class AExprVar(Node):
             print(f"Semantic error at {self.pos}: Undefined variable '{self.name}'")
         else:
             self.type = symbols[self.name]
-
     def generate(self) -> str:
         return self.name
+    def is_lvalue(self) -> bool:
+        return True
 
 
 @dataclass
@@ -760,18 +786,18 @@ class AExprPostfix(Node):
         current_type = self.atom.type
         for op in self.tail:
             if not (isinstance(op, (tuple, list)) and len(op) == 2):
-                print("Semantic error: Неверный формат постфиксного оператора")
+                print("Semantic error: Invalid postfix operator format")
                 continue
             op_name, operand = op
             if op_name == "index":
                 operand.check(symbols)
                 if not isinstance(current_type, ArrayType):
-                    print(f"Semantic error at {self.atom.pos}: Индексирование допустимо только для массивов, получен тип {current_type}")
+                    print(f"Semantic error at {self.atom.pos}: Indexing is allowed only for arrays, got {current_type}")
                 else:
                     current_type = current_type.element
             elif op_name == "field":
                 if not isinstance(current_type, StructSpec):
-                    print(f"Semantic error at {self.atom.pos}: Доступ к полю возможен только для структур, получен тип {current_type}")
+                    print(f"Semantic error at {self.atom.pos}: Field access allowed only for structs, got {current_type}")
                 else:
                     field_found = False
                     for field in current_type.fields:
@@ -780,9 +806,9 @@ class AExprPostfix(Node):
                             field_found = True
                             break
                     if not field_found:
-                        print(f"Semantic error at {self.atom.pos}: Поле '{operand}' не найдено в структуре {current_type}")
+                        print(f"Semantic error at {self.atom.pos}: Field '{operand}' not found in {current_type}")
             else:
-                print(f"Semantic error: Неизвестный постфиксный оператор: {op_name}")
+                print(f"Semantic error: Unknown postfix operator: {op_name}")
         self.type = current_type
 
     def generate(self) -> str:
@@ -795,6 +821,15 @@ class AExprPostfix(Node):
                 elif op_name == "field":
                     result = f"({result} . {operand})"
         return result
+
+    def is_lvalue(self) -> bool:
+        # Если базовое выражение является левым значением и все постфиксные операции – индекс или поле, то результат – левое значение
+        if not self.atom.is_lvalue():
+            return False
+        for op in self.tail:
+            if not (isinstance(op, (tuple, list)) and len(op) == 2 and op[0] in ("index", "field")):
+                return False
+        return True
 
 
 @dataclass
@@ -815,14 +850,14 @@ class AExprAddChain(Node):
         for op, operand in self.tail:
             operand.check(symbols)
             if not (isinstance(current_type, IntType) and isinstance(operand.type, IntType)):
-                print(f"Semantic error at {self.left.pos}: Операция '{op}' требует тип int, а получены {current_type} и {operand.type}")
+                print(f"Semantic error at {self.left.pos}: Operation '{op}' requires int, got {current_type} and {operand.type}")
             current_type = IntType()
         self.type = current_type
 
     def generate(self) -> str:
-        result = self.left.generate()
+        result = Node.generate_rval(self.left)
         for op, operand in self.tail:
-            result = f"({result} {op} {operand.generate()})"
+            result = f"({result} {op} {Node.generate_rval(operand)})"
         return result
 
 
@@ -844,16 +879,34 @@ class AExprMulChain(Node):
         for op, operand in self.tail:
             operand.check(symbols)
             if not (isinstance(current_type, IntType) and isinstance(operand.type, IntType)):
-                print(f"Semantic error at {self.left.pos}: Операция '{op}' требует тип int, а получены {current_type} и {operand.type}")
+                print(f"Semantic error at {self.left.pos}: Operation '{op}' requires int, got {current_type} and {operand.type}")
             current_type = IntType()
         self.type = current_type
 
     def generate(self) -> str:
-        result = self.left.generate()
+        result = Node.generate_rval(self.left)
         for op, operand in self.tail:
-            result = f"({result} {op} {operand.generate()})"
+            result = f"({result} {op} {Node.generate_rval(operand)})"
         return result
 
+@dataclass
+class AExprAddressOf(Node):
+    sub: Node
+    pos: Optional[pe.Position] = None
+
+    def check(self, symbols: dict):
+        self.sub.check(symbols)
+        if not self.sub.is_lvalue():
+            print(f"Semantic error at {self.pos}: Cannot take address of a non-lvalue")
+        # Типом будет указатель на тип операнда
+        self.type = PointerType(self.sub.type)
+
+    def generate(self) -> str:
+        return f"(& {self.sub.generate()})"
+
+    def is_lvalue(self) -> bool:
+        # Результат взятия адреса не является левым значением
+        return False
 
 @dataclass
 class BExprOrChain(Node):
